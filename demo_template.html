@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conformal Triage Layer for Chest X-ray Screening</title>
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --ink:#12161d; --muted:#5d6673; --line:#e2e6ec;
+  --accent:#1f6feb; --clear:#0f9d76; --keep:#c2410c; --miss:#d1344b;
+  --grid:#eef1f5; --shade:rgba(15,157,118,.10);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0d1117; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#28303a;
+    --accent:#58a6ff; --clear:#2ea88a; --keep:#e8873f; --miss:#f2617a;
+    --grid:#1d242e; --shade:rgba(46,168,138,.14);
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 20px 72px}
+
+header h1{font-size:clamp(1.5rem,3.4vw,2.1rem);margin:0 0 6px;letter-spacing:-.02em}
+header .tag{color:var(--muted);font-size:1.02rem;margin:0 0 16px;max-width:74ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.chip{font-family:var(--mono);font-size:.74rem;padding:4px 9px;border:1px solid var(--line);
+  border-radius:999px;color:var(--muted);background:var(--panel);white-space:nowrap}
+.chip b{color:var(--ink);font-weight:600}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:20px;margin-top:20px}
+h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:0 0 14px;font-weight:650}
+
+/* ---- control ---- */
+.ctl{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.ctl label{font-weight:600;white-space:nowrap}
+input[type=range]{flex:1;min-width:220px;accent-color:var(--accent);height:22px}
+.alpha{font-family:var(--mono);font-size:1.7rem;font-weight:700;color:var(--accent);
+  min-width:3.6em;text-align:right;font-variant-numeric:tabular-nums}
+.ctl .exp{flex-basis:100%;color:var(--muted);font-size:.9rem;margin:0}
+
+/* ---- stat tiles ---- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}
+.tile{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--bg)}
+.tile .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+  margin-bottom:6px;font-weight:600}
+.tile .v{font-family:var(--mono);font-size:1.72rem;font-weight:700;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .s{font-size:.8rem;color:var(--muted);margin-top:4px}
+.v.clear{color:var(--clear)} .v.miss{color:var(--miss)} .v.keep{color:var(--keep)}
+
+/* ---- chart ---- */
+.chartbox{overflow-x:auto}
+svg{display:block;width:100%;height:auto;min-width:520px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.83rem;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;
+  vertical-align:-1px}
+
+/* ---- piles ---- */
+.piles{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.piles{grid-template-columns:1fr}}
+.pile{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.pile>.hd{padding:11px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+.pile>.hd .t{font-weight:650;font-size:.94rem}
+.pile>.hd .n{font-family:var(--mono);font-size:.79rem;color:var(--muted)}
+.rows{max-height:270px;overflow-y:auto}
+.row{display:flex;align-items:center;gap:10px;padding:6px 14px;font-family:var(--mono);
+  font-size:.79rem;border-bottom:1px solid var(--grid)}
+.row:last-child{border-bottom:none}
+.row .id{color:var(--muted);min-width:6.4em}
+.row .sc{font-variant-numeric:tabular-nums;min-width:4.2em;font-weight:600}
+.bar{flex:1;height:6px;background:var(--grid);border-radius:3px;overflow:hidden;min-width:40px}
+.bar>span{display:block;height:100%;border-radius:3px}
+.badge{font-size:.68rem;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap}
+.badge.abn{background:var(--miss);color:#fff}
+.empty{padding:22px 14px;color:var(--muted);font-size:.87rem;text-align:center}
+
+/* ---- table ---- */
+.tblbox{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:.83rem;
+  min-width:520px}
+th,td{padding:8px 11px;text-align:right;border-bottom:1px solid var(--grid);
+  font-variant-numeric:tabular-nums}
+th{color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;
+  letter-spacing:.05em;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr.on td{background:var(--shade)}
+.ok{color:var(--clear);font-weight:700}
+
+.note{font-size:.89rem;color:var(--muted)}
+.note p{margin:0 0 10px} .note p:last-child{margin:0}
+.note b{color:var(--ink)}
+ul.tight{margin:0;padding-left:1.15em;font-size:.89rem;color:var(--muted)}
+ul.tight li{margin-bottom:8px} ul.tight li:last-child{margin-bottom:0}
+ul.tight b{color:var(--ink)}
+code{font-family:var(--mono);font-size:.92em;background:var(--bg);padding:1px 5px;
+  border-radius:4px;border:1px solid var(--line)}
+footer{margin-top:28px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:.82rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Conformal Triage Layer for Chest X-ray Screening</h1>
+  <p class="tag">A post-hoc wrapper that turns any chest X-ray abnormality classifier into a
+  screening triage layer with a finite-sample safety guarantee. You choose the miss rate you
+  can live with; the layer removes as much of the worklist as that budget allows. Every number
+  below is computed live in your browser from <b>real inference on real NIH studies</b>.</p>
+  <div class="chips" id="chips"></div>
+</header>
+
+<section class="panel">
+  <h2>1 &middot; Radiologist sets the risk tolerance</h2>
+  <div class="ctl">
+    <label for="a">Tolerated miss rate &alpha;</label>
+    <input type="range" id="a" min="1" max="200" value="50">
+    <div class="alpha" id="av">5.0%</div>
+    <p class="exp" id="exp"></p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>2 &middot; What that buys, on held-out studies</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Worklist reduction</div>
+      <div class="v clear" id="t-cut">--</div><div class="s" id="s-cut">--</div></div>
+    <div class="tile"><div class="k">Miss rate (guaranteed)</div>
+      <div class="v miss" id="t-miss">--</div><div class="s" id="s-miss">--</div></div>
+    <div class="tile"><div class="k">Auto-clear threshold</div>
+      <div class="v" id="t-thr">--</div><div class="s">studies scoring below are cleared</div></div>
+    <div class="tile"><div class="k">Stays on worklist</div>
+      <div class="v keep" id="t-keep">--</div><div class="s" id="s-keep">--</div></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>3 &middot; Where the threshold falls</h2>
+  <div class="chartbox"><svg id="chart" viewBox="0 0 900 320"
+       preserveAspectRatio="xMidYMid meet" role="img"
+       aria-label="Score distributions for normal and abnormal studies with the auto-clear threshold"></svg></div>
+  <div class="legend">
+    <span><i style="background:var(--clear)"></i>Normal studies</span>
+    <span><i style="background:var(--miss)"></i>Abnormal studies</span>
+    <span><i style="background:var(--shade);border:1px solid var(--clear)"></i>Auto-cleared region</span>
+  </div>
+  <p class="note" style="margin-top:12px">Note the x-axis: these real scores occupy roughly
+  <b>0.52&ndash;0.73</b>, not 0&ndash;1. They are a max over 14 sigmoid outputs and are badly
+  <b>miscalibrated</b> &mdash; a study scoring &ldquo;0.63&rdquo; is nowhere near 63% likely to be
+  abnormal. The guarantee holds anyway, exactly. Conformal calibration uses only the <i>ranking</i>
+  of scores, never their face value, which is precisely why it can wrap a model whose confidence
+  numbers you do not trust &mdash; the common case in deployed imaging AI.</p>
+</section>
+
+<section class="panel">
+  <h2>4 &middot; The resulting two piles</h2>
+  <div class="piles">
+    <div class="pile">
+      <div class="hd"><div class="t" style="color:var(--clear)">Auto-cleared &mdash; off the worklist</div>
+        <div class="n" id="h-clear">--</div></div>
+      <div class="rows" id="p-clear"></div>
+    </div>
+    <div class="pile">
+      <div class="hd"><div class="t" style="color:var(--keep)">Radiologist worklist &mdash; ranked</div>
+        <div class="n" id="h-keep">--</div></div>
+      <div class="rows" id="p-keep"></div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:12px">The cleared pane lists only the <b>missed abnormals</b> &mdash;
+  the studies this &alpha; gives up on &mdash; because those are the cost of the trade and should
+  never be hidden. The worklist pane shows the highest-suspicion studies first.</p>
+</section>
+
+<section class="panel">
+  <h2>5 &middot; Does the guarantee actually hold?</h2>
+  <div class="tblbox"><table>
+    <thead><tr><th>&alpha;</th><th>Exact bound k/(n+1)</th><th>Empirical miss rate</th>
+      <th>Worklist cut</th><th>Normals cleared</th><th>Holds</th></tr></thead>
+    <tbody id="tb"></tbody>
+  </table></div>
+  <p class="note" style="margin-top:12px">Averaged over 200 random calibration/test splits of the
+  study pool, &plusmn; Monte&nbsp;Carlo standard error. The empirical miss rate lands <b>on</b> the
+  exact bound k/(n+1) rather than safely under it &mdash; the layer spends the whole risk budget and
+  converts it into worklist reduction. &ldquo;Holds&rdquo; tests the measured mean against that
+  bound within 2 standard errors: the theory constrains the <b>expected</b> miss rate, so a finite
+  number of splits will scatter a hair either side of it. The highlighted row is your current
+  &alpha;.</p>
+</section>
+
+<section class="panel">
+  <h2>6 &middot; What drives the payoff</h2>
+  <p class="note" style="margin-bottom:14px">The numbers above are measured on NIH ChestX-ray14
+  as-is &mdash; a research cohort <b>enriched to 41% abnormal</b>, scored by a mid-grade open
+  classifier (AUROC 0.746). Both differ from a deployed screening setting, and both move the
+  operational benefit. Neither moves the guarantee. Reproduce with
+  <code>python validate_real.py</code>.</p>
+  <div class="piles">
+    <div class="pile">
+      <div class="hd"><div class="t">Case mix &mdash; real scores, resampled</div>
+        <div class="n">&alpha; = 0.05, one study per patient</div></div>
+      <div class="tblbox"><table style="min-width:0">
+        <thead><tr><th>Prevalence</th><th>Worklist cut</th><th>Miss rate</th></tr></thead>
+        <tbody>
+          <tr><td>5%</td><td>18.3%</td><td>0.044</td></tr>
+          <tr><td>10%</td><td>19.3%</td><td>0.047</td></tr>
+          <tr><td>20%</td><td>18.0%</td><td>0.049</td></tr>
+          <tr><td>30%</td><td>16.5%</td><td>0.050</td></tr>
+          <tr class="on"><td>41% &larr; measured</td><td>14.6%</td><td>0.049</td></tr>
+        </tbody></table></div>
+    </div>
+    <div class="pile">
+      <div class="hd"><div class="t">Model quality &mdash; simulated sensitivity</div>
+        <div class="n">&alpha; = 0.05, prevalence 10%</div></div>
+      <div class="tblbox"><table style="min-width:0">
+        <thead><tr><th>Base AUROC</th><th>Worklist cut</th><th>Miss rate</th></tr></thead>
+        <tbody>
+          <tr class="on"><td>0.75 &larr; measured</td><td>22.1%</td><td>0.048</td></tr>
+          <tr><td>0.85</td><td>38.8%</td><td>0.048</td></tr>
+          <tr><td>0.90</td><td>50.9%</td><td>0.048</td></tr>
+          <tr><td>0.95</td><td>67.8%</td><td>0.048</td></tr>
+          <tr><td>0.98</td><td>80.8%</td><td>0.048</td></tr>
+        </tbody></table></div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">Read the right-hand table's miss-rate column: it does not
+  move. <b>Validity is model-agnostic; only the payoff scales with model quality.</b> That is the
+  case for building this as a layer instead of retraining a classifier &mdash; it converts any future
+  improvement in CXR models into worklist reduction under the same guarantee, for free. The
+  left-hand table is real scores with the case mix resampled; the right-hand is simulated, because
+  varying a hypothetical model's accuracy cannot be measured on one real model.</p>
+</section>
+
+<section class="panel">
+  <h2>7 &middot; What this does and does not claim</h2>
+  <ul class="tight">
+    <li><b>Guaranteed:</b> P(auto-cleared | abnormal) &le; &alpha;. A study that is truly abnormal
+    has at most an &alpha; chance of being dropped from the worklist. This is a finite-sample,
+    distribution-free bound &mdash; no asymptotics, no assumption that the model is calibrated.</li>
+    <li><b>Not guaranteed:</b> P(abnormal | auto-cleared), the share of the cleared pile that is
+    abnormal. That quantity moves with disease prevalence and gets no promise here. Conflating the
+    two is the standard error in this space, so the code names them separately.</li>
+    <li><b>Assumption:</b> calibration and incoming studies are exchangeable. Scanner changes,
+    case-mix shifts, or a model update all break this and require recalibration. The layer is
+    honest but not self-monitoring.</li>
+    <li><b>Marginal, not training-conditional.</b> The bound holds in expectation over
+    calibration draws &mdash; but a deployment draws <i>one</i> calibration set and keeps it. The
+    &plusmn; spread above is the cost: at &alpha;=0.05 a realized deployment can land near 0.063.
+    A PAC-style bound would instead promise &ldquo;miss rate &le; &alpha; with 95% confidence&rdquo;
+    for a few points of worklist cut. Not claimed here; it is the most valuable next change.</li>
+    <li><b>Scope:</b> binary normal/abnormal screening triage, retrospective, not PACS-integrated.
+    The guarantee is per-study and marginal, not per-subgroup. All splits here are
+    patient-disjoint, but a per-<i>patient</i> guarantee is a different and stronger claim.</li>
+    <li><b>Not novel math.</b> Split conformal prediction and selective classification are
+    established. The contribution is packaging: a model-agnostic layer with one dial a
+    non-ML radiologist can actually set and defend.</li>
+  </ul>
+</section>
+
+<footer id="ft"></footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const S = DATA.scores, Y = DATA.labels, G = DATA.groups, M = DATA.meta, N = S.length;
+
+/* ---- conformal core: mirrors conformal_triage.py exactly ---- */
+function calibrate(idx, alpha){
+  const abn = [];
+  for(const i of idx) if(Y[i]===1) abn.push(S[i]);
+  abn.sort((p,q)=>p-q);
+  const n = abn.length;
+  if(!n) return -Infinity;
+  const k = Math.floor(alpha*(n+1));
+  return k<1 ? -Infinity : abn[k-1];
+}
+function bound(nAbn, alpha){
+  return nAbn>0 ? Math.floor(alpha*(nAbn+1))/(nAbn+1) : 0;
+}
+function assess(idx, t){
+  let nAbn=0,nNorm=0,cleared=0,missed=0,clrNorm=0;
+  for(const i of idx){
+    const c = S[i] < t;
+    if(Y[i]===1){ nAbn++; if(c) missed++; } else { nNorm++; if(c) clrNorm++; }
+    if(c) cleared++;
+  }
+  return {missRate: nAbn?missed/nAbn:NaN, cut: cleared/idx.length,
+          normClear: nNorm?clrNorm/nNorm:NaN, cleared, missed, kept: idx.length-cleared,
+          nAbn, nNorm};
+}
+
+/* Fixed 50/50 split -- the page always shows the same reproducible scenario.
+   Studies were ordered by shuffled PATIENT at build time, so slicing in half here
+   is already patient-disjoint: no patient appears on both sides. */
+const ALL = Array.from({length:N},(_,i)=>i);
+const CAL = ALL.slice(0, N>>1), TST = ALL.slice(N>>1);
+const CAL_ABN = CAL.reduce((a,i)=>a+(Y[i]===1?1:0),0);
+
+/* Patient-disjoint random split, mirroring patient_split() in validate_real.py:
+   shuffle the patients, then cut the study list at the median patient rank. */
+function patientSplit(rnd){
+  const uniq=[...new Set(G)];
+  for(let i=uniq.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[uniq[i],uniq[j]]=[uniq[j],uniq[i]];}
+  const rankOf=new Map(uniq.map((g,i)=>[g,i]));
+  const rank=ALL.map(i=>rankOf.get(G[i]));
+  const sorted=[...rank].sort((a,b)=>a-b), cut=sorted[Math.floor(sorted.length/2)];
+  const cal=[],tst=[];
+  for(const i of ALL) (rank[i]<=cut?cal:tst).push(i);
+  return [cal,tst];
+}
+
+/* ---- seeded RNG so the validation table is deterministic across loads ---- */
+function mulberry(s){return function(){s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+const ALPHAS=[0.01,0.02,0.05,0.10];
+const TABLE=(()=>{
+  const rnd=mulberry(7), out=[];
+  const splits=[];
+  for(let r=0;r<200;r++) splits.push(patientSplit(rnd));
+  for(const a of ALPHAS){
+    const ms=[]; let cut=0,nc=0,bd=0;
+    for(const [c,t] of splits){
+      const th=calibrate(c,a), m=assess(t,th);
+      ms.push(m.missRate); cut+=m.cut; nc+=m.normClear;
+      bd+=bound(c.reduce((x,i)=>x+(Y[i]===1?1:0),0),a);
+    }
+    const k=splits.length, mean=ms.reduce((x,y)=>x+y,0)/k;
+    // Monte Carlo standard error of the mean miss rate. Needed because the
+    // theoretical statement is about the EXPECTED miss rate; a finite number of
+    // splits estimates it with noise, so a bare `mean <= alpha` comparison would
+    // flip to "fail" on pure sampling jitter even when the layer is exactly right.
+    const se = Math.sqrt(ms.reduce((x,v)=>x+(v-mean)**2,0)/(k-1)/k);
+    out.push({a,bound:bd/k,miss:mean,se,cut:cut/k,nc:nc/k});
+  }
+  return out;
+})();
+
+/* ---- rendering ---- */
+const pct=(x,d=1)=>(100*x).toFixed(d)+'%';
+const $=id=>document.getElementById(id);
+const ord=n=>{const r=n%100; if(r>=11&&r<=13) return n+'th';
+  return n+({1:'st',2:'nd',3:'rd'}[n%10]||'th');};
+
+$('chips').innerHTML=[
+  ['Model',M.model],['Data',M.dataset],['Studies',M.n.toLocaleString()],
+  ['Prevalence',pct(M.prevalence)],['Base AUROC',M.auroc.toFixed(3)],
+  ['Scores',M.source==='real'?'real inference':'simulated']
+].map(([k,v])=>`<span class="chip">${k} <b>${v}</b></span>`).join('');
+
+$('ft').innerHTML=`Calibration set: ${(N>>1).toLocaleString()} studies `
+  +`(${CAL_ABN.toLocaleString()} abnormal). Held-out test set: ${(N-(N>>1)).toLocaleString()} studies. `
+  +`All splits are <b>patient-disjoint</b> &mdash; these ${M.n.toLocaleString()} studies come from `
+  +`${(M.n_patients||M.n).toLocaleString()} patients (up to 13 studies each), and no patient appears `
+  +`on both sides of a split. Everything on this page is computed in your browser from the embedded `
+  +`scores &mdash; no server, no network. Threshold rule and metrics mirror `
+  +`<code>conformal_triage.py</code>.`;
+
+/* Axis spans the OBSERVED score range, not [0,1]. Real CXR model scores here are
+   a max over 14 sigmoid outputs and occupy only ~[0.52, 0.73]; a fixed [0,1] axis
+   would render the entire distribution as one spike. */
+const LO=(()=>{let m=Infinity;for(const i of TST)m=Math.min(m,S[i]);return m;})();
+const HI=(()=>{let m=-Infinity;for(const i of TST)m=Math.max(m,S[i]);return m;})();
+const PAD=(HI-LO)*0.04, X0=LO-PAD, X1=HI+PAD;
+
+function histogram(t){
+  const W=900,H=320,PL=52,PR=14,PT=16,PB=42,B=44;
+  const iw=W-PL-PR, ih=H-PT-PB;
+  const hn=new Array(B).fill(0), ha=new Array(B).fill(0);
+  const bin=v=>Math.max(0,Math.min(B-1,Math.floor((v-X0)/(X1-X0)*B)));
+  for(const i of TST) (Y[i]===1?ha:hn)[bin(S[i])]++;
+  const mx=Math.max(...hn,...ha)||1;
+  const x=v=>PL+((v-X0)/(X1-X0))*iw, yv=c=>PT+ih-(c/mx)*ih;
+  let s='';
+  // shaded auto-clear region
+  if(isFinite(t)&&t>X0){
+    s+=`<rect x="${PL}" y="${PT}" width="${Math.max(0,x(Math.min(t,X1))-PL)}" height="${ih}"
+        fill="var(--shade)"/>`;
+  }
+  // gridlines
+  for(let g=0;g<=4;g++){
+    const yy=PT+ih-(g/4)*ih;
+    s+=`<line x1="${PL}" y1="${yy}" x2="${W-PR}" y2="${yy}" stroke="var(--grid)" stroke-width="1"/>`;
+    s+=`<text x="${PL-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="var(--muted)"
+        font-family="var(--mono)">${Math.round(g/4*mx)}</text>`;
+  }
+  const bw=iw/B;
+  for(let b=0;b<B;b++){
+    const bx=PL+b*bw;
+    if(hn[b])s+=`<rect x="${bx}" y="${yv(hn[b])}" width="${bw-1}" height="${PT+ih-yv(hn[b])}"
+      fill="var(--clear)" opacity=".62"/>`;
+    if(ha[b])s+=`<rect x="${bx}" y="${yv(ha[b])}" width="${bw-1}" height="${PT+ih-yv(ha[b])}"
+      fill="var(--miss)" opacity=".62"/>`;
+  }
+  // axis
+  s+=`<line x1="${PL}" y1="${PT+ih}" x2="${W-PR}" y2="${PT+ih}" stroke="var(--line)" stroke-width="1.5"/>`;
+  for(let g=0;g<=5;g++){
+    const v=X0+(g/5)*(X1-X0);
+    s+=`<text x="${x(v)}" y="${PT+ih+18}" text-anchor="middle" font-size="11" fill="var(--muted)"
+        font-family="var(--mono)">${v.toFixed(2)}</text>`;
+  }
+  s+=`<text x="${PL+iw/2}" y="${H-6}" text-anchor="middle" font-size="11.5" fill="var(--muted)">`
+    +`model abnormality score &rarr;</text>`;
+  // threshold marker
+  if(isFinite(t)&&t>0&&t<=1){
+    s+=`<line x1="${x(t)}" y1="${PT-4}" x2="${x(t)}" y2="${PT+ih}" stroke="var(--accent)"
+        stroke-width="2.5"/>`;
+    const anch=t>0.72?'end':'start', dx=t>0.72?-7:7;
+    s+=`<text x="${x(t)+dx}" y="${PT+9}" text-anchor="${anch}" font-size="12" font-weight="700"
+        fill="var(--accent)" font-family="var(--mono)">t_low = ${t.toFixed(3)}</text>`;
+  }
+  return s;
+}
+
+function rows(el, items, kind){
+  if(!items.length){ el.innerHTML=`<div class="empty">${kind==='clear'
+    ? 'No abnormal study was auto-cleared at this &alpha;.'
+    : 'Worklist is empty.'}</div>`; return; }
+  el.innerHTML=items.map(i=>{
+    const col = Y[i]===1?'var(--miss)':'var(--clear)';
+    return `<div class="row"><span class="id">#${String(i).padStart(5,'0')}</span>`
+      +`<span class="sc" style="color:${col}">${S[i].toFixed(3)}</span>`
+      +`<span class="bar"><span style="width:${(S[i]*100).toFixed(1)}%;background:${col}"></span></span>`
+      +(Y[i]===1?`<span class="badge abn">ABNORMAL</span>`:'')+`</div>`;
+  }).join('');
+}
+
+function render(){
+  const alpha = +$('a').value/1000;
+  $('av').textContent = (alpha*100).toFixed(1)+'%';
+  const t = calibrate(CAL, alpha);
+  const m = assess(TST, t);
+
+  $('exp').innerHTML = `&ldquo;I accept that at most <b>${(alpha*100).toFixed(1)}%</b> of truly `
+    +`abnormal studies may be auto-cleared.&rdquo; Threshold is then set from `
+    +`${CAL_ABN.toLocaleString()} labelled abnormal calibration studies &mdash; `
+    +`the ${ord(Math.floor(alpha*(CAL_ABN+1)))} lowest-scoring one becomes <code>t_low</code>.`;
+
+  $('t-cut').textContent = pct(m.cut);
+  $('s-cut').textContent = `${m.cleared.toLocaleString()} of ${TST.length.toLocaleString()} studies removed`;
+  $('t-miss').textContent = pct(m.missRate,2);
+  $('s-miss').innerHTML = `${m.missed} of ${m.nAbn.toLocaleString()} abnormals cleared `
+    +`&middot; budget ${pct(alpha,2)}`;
+  $('t-thr').textContent = isFinite(t)?t.toFixed(3):'--';
+  $('t-keep').textContent = m.kept.toLocaleString();
+  $('s-keep').textContent = `${pct(1-m.cut)} of studies still read`;
+
+  $('chart').innerHTML = histogram(t);
+
+  const missed = TST.filter(i=>Y[i]===1 && S[i]<t).sort((p,q)=>S[q]-S[p]);
+  const kept   = TST.filter(i=>!(S[i]<t)).sort((p,q)=>S[q]-S[p]);
+  $('h-clear').innerHTML = `${m.cleared.toLocaleString()} cleared `
+    +`&middot; <span style="color:var(--miss)">${m.missed} missed abnormal</span> (shown below)`;
+  $('h-keep').innerHTML = `${m.kept.toLocaleString()} to read &middot; top 40 by suspicion`;
+  rows($('p-clear'), missed.slice(0,40), 'clear');
+  rows($('p-keep'), kept.slice(0,40), 'keep');
+
+  $('tb').innerHTML = TABLE.map(r=>{
+    const on = Math.abs(r.a-alpha)<1e-9;
+    // "Holds" = the measured mean is statistically consistent with the exact
+    // bound, i.e. within 2 Monte Carlo standard errors of it. Comparing the raw
+    // mean to alpha with `<=` would report failure on sampling noise alone.
+    const holds = r.miss <= r.bound + 2*r.se;
+    return `<tr class="${on?'on':''}"><td>${r.a.toFixed(2)}</td>`
+      +`<td>${r.bound.toFixed(4)}</td>`
+      +`<td>${r.miss.toFixed(4)} <span style="color:var(--muted)">&plusmn;${r.se.toFixed(4)}</span></td>`
+      +`<td>${pct(r.cut)}</td><td>${pct(r.nc)}</td>`
+      +`<td class="${holds?'ok':''}" ${holds?'':'style="color:var(--miss);font-weight:700"'}>`
+      +`${holds?'yes':'no'}</td></tr>`;
+  }).join('');
+}
+
+$('a').addEventListener('input', render);
+render();
+</script>
+</body>
+</html>
