@@ -108,6 +108,48 @@ Two things to read off these tables:
   a classifier — it turns every future improvement in CXR models into worklist
   reduction under the same guarantee, for free.
 
+### The guarantee you can actually say out loud
+
+The bound above is **marginal** — it holds in expectation over calibration sets. But
+a deployment draws *one* calibration set and keeps that threshold. Measured across
+possible deployments, only **~50% of them come in at or under alpha**, because the
+marginal rule targets the mean.
+
+`calibrate_threshold_pac(..., delta=0.05)` targets the quantile instead, giving a
+**training-conditional (PAC)** guarantee — *"with 95% confidence, this threshold
+misses at most alpha of abnormal studies."*
+
+| alpha | rule | mean miss | p95 miss | deployments ≤ alpha | worklist cut |
+|---:|---|---:|---:|---:|---:|
+| 0.05 | marginal | 0.0490 | 0.0619 | 53.0% | 14.9% |
+| 0.05 | **PAC** | 0.0402 | 0.0520 | **92.0%** | 12.5% |
+| 0.10 | marginal | 0.0994 | 0.1159 | 53.0% | 24.4% |
+| 0.10 | **PAC** | 0.0875 | 0.1031 | **90.0%** | 22.4% |
+
+It costs ~2 points of worklist cut. Note the PAC column reads slightly under 95%
+because it is measured on a *finite* test set, which adds estimation noise on top of
+the true miss rate; against an analytically-known score distribution the same rule
+delivers **95.6%** (vs 51.7% marginal). Treat the column as a lower bound.
+
+### Per-finding safety audit
+
+The guarantee is marginal over all abnormal studies, so in principle it could clear
+pneumothoraces at 15% while averaging out to alpha. That has to be *measured*:
+
+| finding | miss rate | vs alpha |
+|---|---:|---:|
+| Hernia | 0.066 | 1.3× |
+| Fibrosis | 0.058 | 1.2× |
+| Nodule | 0.054 | 1.1× |
+| … | … | … |
+| **Pneumothorax** | **0.036** | **0.7×** |
+| Effusion / Edema | 0.017 | 0.3× |
+
+No finding blows past the budget — worst is 1.3× on the rarest class (Hernia, ~17
+positives, mostly noise), and the most time-critical finding here (pneumothorax)
+sits *below* alpha. This is measured, not guaranteed; per-subgroup validity would
+need a Mondrian conformal variant.
+
 ## Running it
 
 Zero-download path — simulated scores, numpy only, works offline:
@@ -149,12 +191,14 @@ your browser restricts `file://` scripts.
 - **Assumes exchangeability** between calibration and incoming studies. Scanner
   changes, case-mix shift, or a model update all break it and require recalibration.
   The layer is honest but not self-monitoring.
-- **The guarantee is marginal over calibration draws**, not conditional on the one
-  calibration set you actually deploy with. The `[p5, p95]` column shows the cost:
-  at alpha=0.05 a realized deployment can land near 0.063. A PAC-style
-  ("training-conditional") bound would instead promise *"miss rate <= alpha with 95%
-  confidence"* at a few points of worklist cut. That is the most valuable next
-  change, and it is deliberately not claimed here.
+- **The headline table's guarantee is marginal** over calibration draws — only ~50%
+  of deployments land at or under alpha. Use `calibrate_threshold_pac` if you need
+  the training-conditional version (see above); it is implemented and validated.
+- **Per-subgroup validity is measured, not guaranteed.** The per-finding audit above
+  shows no finding exceeding ~1.3× alpha, but nothing in the theory prevents it. A
+  Mondrian (per-stratum) conformal variant would. Demographic subgroups (age, sex,
+  view position) are not audited at all — this dataset export carries no
+  demographics.
 - **Binary screening triage only**, retrospective, not PACS-integrated. The guarantee
   is per-study and marginal — *not* per-patient, and *not* per-subgroup. Subgroup
   validity is a known gap and the natural next step.
