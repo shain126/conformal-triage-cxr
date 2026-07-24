@@ -7,7 +7,8 @@ The radiologist sets one dial — the missed-abnormal rate `alpha` they can tole
 The layer then auto-clears as much of the worklist as that budget allows, and
 provably no more.
 
-**[▶ Live interactive demo](index.html)** · runs entirely in the browser, no install
+**[▶ Live interactive demo](https://shain126.github.io/conformal-triage-cxr/)** ·
+runs entirely in the browser, no install
 
 ---
 

@@ -3,7 +3,9 @@
 **Title:** A Conformal Triage Layer: Bounding Missed Abnormalities on Chest X-ray
 Screening Worklists
 
-**Repo:** `<REPO URL>` · **Demo:** `<DEMO URL>` · **Video:** `<VIDEO URL>`
+**Repo:** https://github.com/shain126/conformal-triage-cxr ·
+**Demo:** https://shain126.github.io/conformal-triage-cxr/ ·
+**Video:** `<VIDEO URL>`
 
 ---
 
