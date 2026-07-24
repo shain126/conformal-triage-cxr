@@ -26,10 +26,13 @@ abnormality classifier into a safe triage layer with a finite-sample guarantee:
 - Everything else stays on the worklist, ranked by score (highest suspicion first).
 
 **Value proposition (MEASURED ON REAL DATA — supersedes the old simulated claim):**
-at alpha=0.05, on 8,000 real NIH ChestX-ray14 studies scored by torchxrayvision
-densenet121-res224-all (AUROC 0.746, prevalence 41.2%), the layer cuts the worklist
-**15%** while its miss rate sits exactly on the bound (0.0499 vs alpha 0.05).
-Resampled to screening prevalence (5–10% abnormal) that rises to **~20%**.
+at alpha=0.05, on 8,000 real NIH ChestX-ray14 studies (5,775 patients) scored by
+torchxrayvision densenet121-res224-all (AUROC 0.746, prevalence 41.2%), under
+patient-disjoint splits the layer cuts the worklist **15%** while its miss rate sits
+on the bound (0.0497 vs alpha 0.05). Resampled to screening prevalence (5–10%
+abnormal) that is **~19%**. NOTE: this is the *marginal* guarantee (~50% of
+deployments land at/under alpha); calibrate_threshold_pac gives the
+training-conditional version. See README.md for the full tables.
 
 ⚠️ The earlier "~63%" figure was a SIMULATION artifact — it came from a synthetic
 classifier at AUROC 0.977. Do not quote it as a result. The honest framing is the
@@ -54,10 +57,14 @@ are different quantities. See README.md for the full tables.
   screening worklists."
 
 ## State of the build (done)
-- `conformal_triage.py` — core implementation + empirical validation demo,
-  numpy-only, runs anywhere. **Math verified**: empirical miss-rate ≤ target alpha
-  at alpha ∈ {0.01, 0.02, 0.05, 0.10}. Includes `adapter_torchxrayvision()` stub.
-- `verify_conformal.py` (in scratch/outputs) — the validation experiment.
+- `conformal_triage.py` — core: `calibrate_threshold` (marginal),
+  `calibrate_threshold_pac` (training-conditional), `triage`, `evaluate`,
+  `conformal_bound`. numpy-only, runs anywhere. Math verified + edge-case tested.
+- `run_real_model.py` — real inference over NIH ChestX-ray14 → `real_scores.npz`.
+- `validate_real.py` — validation, prevalence/model-quality sweeps, PAC comparison,
+  per-finding safety audit.
+- `build_demo.py` + `demo_template.html` → `index.html` (self-contained demo).
+- `README.md`, `SUBMISSION.md` (484 words) — done.
 
 ## Remaining tasks
 1. ~~**Real-model run**~~ ✅ DONE — `run_real_model.py` streams NIH ChestX-ray14 from
