@@ -10,6 +10,12 @@ provably no more.
 **[▶ Live interactive demo](https://shain126.github.io/conformal-triage-cxr/)** ·
 runs entirely in the browser, no install
 
+![Demo: dragging the tolerated-miss-rate dial recomputes the worklist reduction and
+miss rate live on real NIH data](conformal-triage-demo.gif)
+
+*Dragging α from 0.8% to 20% on real NIH scores: worklist reduction rises 2.5% → 37%
+as the miss rate tracks the budget you set.*
+
 ---
 
 ## The problem
