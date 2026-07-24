@@ -4,8 +4,7 @@
 Screening Worklists
 
 **Repo:** https://github.com/shain126/conformal-triage-cxr ·
-**Demo:** https://shain126.github.io/conformal-triage-cxr/ ·
-**Video:** `<VIDEO URL>`
+**Demo:** https://shain126.github.io/conformal-triage-cxr/ (interactive, runs live in-browser)
 
 ---
 

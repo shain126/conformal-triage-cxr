@@ -1,3 +1,8 @@
 .venv/
 __pycache__/
 .DS_Store
+
+# agent handoff / local dev files — keep out of the public repo
+CLAUDE.md
+AGENTS.md
+.claude/
